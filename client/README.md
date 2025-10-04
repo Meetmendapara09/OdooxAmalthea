@@ -1,152 +1,147 @@
-# Approval Workflow Application
+# Expenseasy
 
-A comprehensive approval workflow system with multiple user roles including Admin, Employee, and Manager views. Built with React, TypeScript, and React Router.
+Modern Next.js 15 application for expense management with **PostgreSQL via Prisma**, conditional approvals, role-based access control, and client-side OCR.
 
-## 🎯 Features
+**⚠️ All data operations flow through Prisma ORM to PostgreSQL.** No mock data is used in production code.
 
-### Admin View
-- View all approval requests across the organization
-- Filter approvals by category (Sick Leave, Annual Leave, Personal, Emergency)
-- Search functionality for employees and categories
-- Track approval status (Approved, Pending, Rejected)
-- Monitor dates, leave types, and total days
+📚 **See [ARCHITECTURE.md](./ARCHITECTURE.md) for complete technical documentation.**
 
-### Employee View
-- Submit approval requests with detailed information
-- Specify reason/comments for the request
-- Select start and end dates
-- Choose category and leave type (Paid/Unpaid)
-- Upload attachments (PDF, DOC, DOCX, JPG, PNG)
+## Features
 
-### Manager View
-- Review pending approval requests
-- Filter requests by status
-- Approve or reject requests
-- View detailed employee information
+- Next.js + Tailwind CSS UI
+- Expense creation, listing, and detail view
+- Role-based views (admin/manager/employee)
+- Conditional approvals:
+  - Percentage rule (e.g., 60% of approvers)
+  - Specific approver rule (e.g., CFO approves)
+  - Hybrid rule (percentage AND specific approvers)
+- OCR receipt scanning (client-side) using Tesseract.js
+- Authentication with NextAuth (JWT strategy with Credentials provider)
+- Real-time currency conversions via ExchangeRate-API
+- Country/currency data from Rest Countries API
+- All CRUD operations via Prisma ORM → PostgreSQL
 
-## 🚀 Getting Started
+## Getting started
 
-### Installation
+1. Install dependencies
 
-```bash
-npm install
-```
+	npm install
 
-### Development
+2. Start dev server
 
-```bash
-npm run dev
-```
+	npm run dev
+## Database: PostgreSQL (Local setup)
 
-The application will be available at `http://localhost:5173`
+We use PostgreSQL via Prisma.
 
-## 🛣️ Routing Structure
+1. Start Postgres locally (Docker)
 
-| Route | Component | Description |
-|-------|-----------|-------------|
-| `/` | Redirect | Redirects to sign-in page |
-| `/signin` | SignIn | Employee/Manager login |
-| `/admin-signin` | AdminSignIn | Admin login |
-| `/admin` | AdminView | Admin dashboard with all approvals |
-| `/employee` | EmployeeView | Employee request submission form |
-| `/manager` | ManagerView | Manager approval review interface |
+	docker compose up -d db
 
-## 🔄 Workflow
+2. Create .env with connection string
 
-1. **Employee submits request** → Employee View
-2. **Manager reviews** → Manager View
-3. **Admin monitors** → Admin View
-4. **Decision made** → Approved/Rejected status updated
+	DATABASE_URL="postgresql://postgres:postgres@localhost:5432/expenseasy?schema=public"
 
-## 🛠️ Technologies Used
+3. Generate client and run migrations
 
-- **React 19** - UI framework
-- **TypeScript** - Type safety
-- **Vite** - Build tool
-- **React Router v6** - Client-side routing
-- **CSS3** - Styling with gradients and animations
+	npx prisma generate
+	npx prisma migrate dev --name init
 
-## 📁 Project Structure
+4. Seed data
 
-```
-client/
-├── src/
-│   ├── pages/
-│   │   ├── AdminSignIn.tsx
-│   │   ├── SignIn.tsx
-│   │   ├── AdminView.tsx
-│   │   ├── EmployeeView.tsx
-│   │   └── ManagerView.tsx
-│   ├── styles/
-│   │   ├── AdminSignIn.css
-│   │   ├── SignIn.css
-│   │   ├── AdminView.css
-│   │   ├── EmployeeView.css
-│   │   └── ManagerView.css
-│   └── App.tsx
-```
+	npm run prisma:seed
 
----
+Troubleshooting:
+- If ts-node isn’t installed, add it as a dev dependency or compile the seed to JS.
+- Alternatively, run: npx ts-node prisma/seed.ts
 
-## React + Vite Technical Notes
+## RBAC
 
-## Expanding the ESLint configuration
+Roles supported: admin, manager, employee.
+- Sidebar items are role-filtered
+- Approvals page is protected with a RoleGuard allowing admin/manager
+- Approval actions also check the current role and prevent employee actions
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## OCR languages
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+OCR runs in the browser using Tesseract.js.
+- Default languages: English + Hindi (eng+hin)
+- You can pass opts.lang to ocrReceiptClient to override (e.g., 'eng' or 'eng+hin+spa')
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+3. Open the app
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+	http://localhost:3000 (or the port shown in the terminal)
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## OCR: Receipt Scanning (Tesseract.js)
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+We use Tesseract.js directly in the browser to extract text from uploaded receipt images and then parse fields:
+
+- amount (best-effort numeric parsing)
+- date (normalized to YYYY-MM-DD)
+- description (vendor or a short line)
+- expenseType (heuristic mapping to one of: Meals & Entertainment, Travel, Software, Office Supplies, Other)
+
+Where it's wired:
+- Client utility: `src/lib/ocr-tesseract.ts` (exports `ocrReceiptClient(dataUri)`)
+- Used in: `src/components/expenses/expense-form.tsx` on file upload
+
+No server key or model setup is required for Tesseract.js. For better accuracy you can:
+- Use clearer images with good contrast
+- Crop the image to the receipt area before upload
+- Switch to additional languages by passing `{ lang: 'eng+spa' }` to `ocrReceiptClient`
+
+Troubleshooting:
+- If OCR is slow, it’s running fully client-side in the browser. Consider resizing images before upload.
+- If fields are not detected correctly, you can still manually edit the prefilled form fields.
+
+## Authentication and Signup
+
+We use NextAuth with the Prisma Adapter and the Credentials provider.
+
+- Local dev usually works without extra env, but for production you must set:
+	- NEXTAUTH_URL="http://localhost:3000"
+	- NEXTAUTH_SECRET="some-strong-random-string"
+
+Signup flow:
+- Visit /signup
+- Enter company details and your admin user details
+- We’ll create the company (and currency if it doesn’t exist), create your admin user, then log you in automatically.
+
+Seeded users (if you ran the seed script):
+- admin@expenseasy.com / password
+- manager@expenseasy.com / password
+- employee@expenseasy.com / password
+
+Note: If you seeded earlier, you may need to re-seed to get passwords set.
+
+## Prisma Accelerate
+
+This project is configured to use Prisma Accelerate via the DATABASE_URL using the prisma+postgres protocol.
+
+- The `.env` contains a `DATABASE_URL` that begins with `prisma+postgres://...` which routes all Prisma Client queries through Accelerate.
+- Because Accelerate is handled by the connection string, no additional code changes are required. We instantiate a normal `PrismaClient()` in `src/lib/db.ts`, and all CRUD operations will go through Accelerate automatically.
+
+## Deployment
+
+This project is ready for deployment on Vercel at: **https://new-backdoor-pathway.vercel.app**
+
+📚 **See [DEPLOYMENT.md](./DEPLOYMENT.md) for complete deployment instructions and Vercel configuration.**
+
+### Quick Deploy to Vercel
+
+1. Push your code to GitHub
+2. Import project in Vercel dashboard
+3. Add environment variables (see DEPLOYMENT.md)
+4. Deploy
+
+### Environment Variables for Production
+
+Set these in your Vercel project settings:
+- `DATABASE_URL` - Your Prisma Accelerate connection string
+- `NEXTAUTH_URL` - Your production URL (https://new-backdoor-pathway.vercel.app)
+- `NEXTAUTH_SECRET` - Secure random string for JWT signing
+- `CLIENT_ID` - Your application client ID
+- `CLIENT_SECRET` - Your application client secret
+- `NEXT_PUBLIC_WEB_URL` - Public-facing URL for the app
+

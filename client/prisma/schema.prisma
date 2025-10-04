@@ -1,0 +1,171 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// RBAC roles
+enum UserRole {
+  admin
+  manager
+  employee
+}
+
+model Company {
+  id       String   @id @default(cuid())
+  name     String
+  currency   Currency @relation(fields: [currencyCode], references: [code])
+  currencyCode String
+  users    User[]
+  approvalPolicies ApprovalPolicy[]
+}
+
+model Currency {
+  code   String @id
+  name   String
+  symbol String
+  companies Company[]
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String?
+  role      UserRole @default(employee)
+  avatarUrl String
+  company   Company? @relation(fields: [companyId], references: [id])
+  companyId String?
+  // Org structure
+  manager     User?    @relation("UserManager", fields: [managerId], references: [id])
+  managerId   String?
+  directReports User[] @relation("UserManager")
+  // Expenses submitted by this user
+  expenses  Expense[]
+  // Approvals given by this user
+  approvals Approval[]
+  // Approval policy relations
+  approvalPolicies ApprovalPolicy[]
+  policyApproverOf ApprovalPolicyApprover[]
+
+  // NextAuth relations
+  accounts Account[]
+  sessions Session[]
+}
+
+enum ExpenseStatus {
+  pending
+  approved
+  rejected
+}
+
+model Expense {
+  id          String        @id @default(cuid())
+  description String
+  amount      Decimal       @db.Decimal(12, 2)
+  currency    String
+  category    String
+  date        DateTime
+  status      ExpenseStatus @default(pending)
+  comments    String?
+  receiptUrl  String?
+
+  employee   User    @relation(fields: [employeeId], references: [id])
+  employeeId String
+
+  // Optional approval rules (stored as JSON for flexibility)
+  approvalRules Json?
+  // Approvals history
+  approvals     Approval[]
+}
+
+// Reusable approval policy that can be applied when an expense is created
+model ApprovalPolicy {
+  id        String   @id @default(cuid())
+  company   Company  @relation(fields: [companyId], references: [id])
+  companyId String
+  // Subject of the policy: who the policy applies to (the employee submitting expense)
+  user      User?    @relation(fields: [userId], references: [id])
+  userId    String?
+  // Optional category to narrow the policy; null means applies to all categories
+  category  String?
+  description String?
+  // Settings
+  isManagerApprover Boolean @default(false)
+  managerFirst      Boolean @default(false)
+  sequential        Boolean @default(false)
+  minApprovalPercentage Int?  // 0-100
+
+  approvers ApprovalPolicyApprover[]
+
+  @@index([companyId])
+  @@index([userId])
+}
+
+model ApprovalPolicyApprover {
+  id        String @id @default(cuid())
+  policy    ApprovalPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  policyId  String
+  // For real users, use approverId FK; for virtual approvers (like __MANAGER__), use approverType
+  approver  User?   @relation(fields: [approverId], references: [id])
+  approverId String?
+  approverType String? // 'user' | 'manager' | etc
+  required  Boolean @default(false)
+  order     Int      @default(0)
+
+  @@index([policyId])
+  @@index([approverId])
+}
+
+model Approval {
+  id          String   @id @default(cuid())
+  decision    String   // 'approved' | 'rejected'
+  timestamp   DateTime @default(now())
+  comments    String?
+
+  expense   Expense @relation(fields: [expenseId], references: [id])
+  expenseId String
+
+  approver   User   @relation(fields: [approverId], references: [id])
+  approverId String
+
+  @@unique([expenseId, approverId])
+}
+
+// NextAuth models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
