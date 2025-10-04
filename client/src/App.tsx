@@ -1,35 +1,26 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import AdminSignIn from './pages/AdminSignIn';
+import SignIn from './pages/SignIn';
+import AdminView from './pages/AdminView';
+import EmployeeView from './pages/EmployeeView';
+import ManagerView from './pages/ManagerView';
+import './App.css';
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    <Router>
+      <Routes>
+        <Route path="/" element={<Navigate to="/signin" replace />} />
+        <Route path="/signin" element={<SignIn />} />
+        <Route path="/admin-signin" element={<AdminSignIn />} />
+        <Route path="/admin" element={<AdminView />} />
+        <Route path="/employee" element={<EmployeeView />} />
+        <Route path="/manager" element={<ManagerView />} />
+        <Route path="/approval/:id" element={<AdminView />} />
+        <Route path="*" element={<Navigate to="/signin" replace />} />
+      </Routes>
+    </Router>
+  );
 }
 
-export default App
+export default App;

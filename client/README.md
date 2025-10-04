@@ -1,15 +1,94 @@
-# React + TypeScript + Vite
+# Approval Workflow Application
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A comprehensive approval workflow system with multiple user roles including Admin, Employee, and Manager views. Built with React, TypeScript, and React Router.
 
-Currently, two official plugins are available:
+## 🎯 Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### Admin View
+- View all approval requests across the organization
+- Filter approvals by category (Sick Leave, Annual Leave, Personal, Emergency)
+- Search functionality for employees and categories
+- Track approval status (Approved, Pending, Rejected)
+- Monitor dates, leave types, and total days
 
-## React Compiler
+### Employee View
+- Submit approval requests with detailed information
+- Specify reason/comments for the request
+- Select start and end dates
+- Choose category and leave type (Paid/Unpaid)
+- Upload attachments (PDF, DOC, DOCX, JPG, PNG)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Manager View
+- Review pending approval requests
+- Filter requests by status
+- Approve or reject requests
+- View detailed employee information
+
+## 🚀 Getting Started
+
+### Installation
+
+```bash
+npm install
+```
+
+### Development
+
+```bash
+npm run dev
+```
+
+The application will be available at `http://localhost:5173`
+
+## 🛣️ Routing Structure
+
+| Route | Component | Description |
+|-------|-----------|-------------|
+| `/` | Redirect | Redirects to sign-in page |
+| `/signin` | SignIn | Employee/Manager login |
+| `/admin-signin` | AdminSignIn | Admin login |
+| `/admin` | AdminView | Admin dashboard with all approvals |
+| `/employee` | EmployeeView | Employee request submission form |
+| `/manager` | ManagerView | Manager approval review interface |
+
+## 🔄 Workflow
+
+1. **Employee submits request** → Employee View
+2. **Manager reviews** → Manager View
+3. **Admin monitors** → Admin View
+4. **Decision made** → Approved/Rejected status updated
+
+## 🛠️ Technologies Used
+
+- **React 19** - UI framework
+- **TypeScript** - Type safety
+- **Vite** - Build tool
+- **React Router v6** - Client-side routing
+- **CSS3** - Styling with gradients and animations
+
+## 📁 Project Structure
+
+```
+client/
+├── src/
+│   ├── pages/
+│   │   ├── AdminSignIn.tsx
+│   │   ├── SignIn.tsx
+│   │   ├── AdminView.tsx
+│   │   ├── EmployeeView.tsx
+│   │   └── ManagerView.tsx
+│   ├── styles/
+│   │   ├── AdminSignIn.css
+│   │   ├── SignIn.css
+│   │   ├── AdminView.css
+│   │   ├── EmployeeView.css
+│   │   └── ManagerView.css
+│   └── App.tsx
+```
+
+---
+
+## React + Vite Technical Notes
 
 ## Expanding the ESLint configuration
 
