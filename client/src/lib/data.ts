@@ -5,6 +5,7 @@ export const mockUsers: User[] = [
   { id: '2', name: 'Manager Mike', email: 'manager@expenseasy.com', role: 'manager', avatarUrl: 'https://picsum.photos/seed/2/100/100' },
   { id: '3', name: 'Employee Emma', email: 'employee@expenseasy.com', role: 'employee', avatarUrl: 'https://picsum.photos/seed/3/100/100' },
   { id: '4', name: 'CFO Carol', email: 'cfo@expenseasy.com', role: 'manager', avatarUrl: 'https://picsum.photos/seed/4/100/100' },
+  { id: '5', name: 'Director Dan', email: 'director@expenseasy.com', role: 'manager', avatarUrl: 'https://picsum.photos/seed/5/100/100' },
 ];
 
 export const mockCompany: Company = {
@@ -61,7 +62,14 @@ export const mockExpenses: Expense[] = [
     employee: { id: '3', name: 'Employee Emma' },
     approvalRules: {
       type: 'specific_approver',
-      requiredApprovers: ['4'], // CFO Carol
+      requiredApprovers: ['2', '4', '5'],
+      approverSequence: [
+        { approverId: '2', order: 0, required: true, type: 'manager', label: 'Manager' },
+        { approverId: '4', order: 1, required: true, type: 'user', label: 'Finance' },
+        { approverId: '5', order: 2, required: true, type: 'user', label: 'Director' },
+      ],
+      managerFirst: true,
+      sequential: true,
     },
   },
   {
@@ -91,7 +99,12 @@ export const mockExpenses: Expense[] = [
     approvalRules: {
       type: 'hybrid',
       percentageThreshold: 60,
-      requiredApprovers: ['2'], // Manager Mike
+      requiredApprovers: ['2'],
+      approverSequence: [
+        { approverId: '2', order: 0, required: true, type: 'manager', label: 'Manager' },
+      ],
+      managerFirst: true,
+      sequential: true,
     },
   },
   {

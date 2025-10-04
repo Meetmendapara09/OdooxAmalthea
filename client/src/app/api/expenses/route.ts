@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { sendPushNotification } from '@/lib/push-server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 
 function mapExpense(e: any) {
   return {
@@ -27,7 +30,10 @@ function mapExpense(e: any) {
 }
 
 export async function GET() {
+  const session = await getServerSession(authOptions);
+  const companyId = (session?.user as any)?.companyId;
   const expenses = await prisma.expense.findMany({
+    where: companyId ? { employee: { companyId } } : undefined,
     include: { employee: true, approvals: { include: { approver: true } } },
     orderBy: { date: 'desc' },
   });
@@ -41,11 +47,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
+  const employee = await prisma.user.findUnique({ where: { id: employeeId }, include: { company: true, manager: true } });
+  if (!employee) {
+    return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
+  }
+
   // If no explicit approvalRules provided, try derive from policy for employee/category
   let rulesToApply = approvalRules ?? null;
   if (!rulesToApply) {
-    const employee = await prisma.user.findUnique({ where: { id: employeeId }, include: { company: true, manager: true } as any });
-    if (employee?.companyId) {
+    if (employee.companyId) {
       const policy = await prisma.approvalPolicy.findFirst({
         where: {
           companyId: employee.companyId,
@@ -56,39 +66,64 @@ export async function POST(req: Request) {
             { userId: null, category: null },
           ],
         },
-        include: { approvers: { orderBy: { order: 'asc' } } },
+        include: { approvers: { orderBy: { order: 'asc' }, include: { approver: true } } },
       });
 
       if (policy) {
-        // Build approver list, resolving virtual approvers to actual user IDs
-        const approverIds: string[] = [];
-        
-        // Add manager if policy says so
-        if (policy.isManagerApprover && employee.managerId) {
-          approverIds.push(employee.managerId);
+        const approverSteps: Array<{ approverId: string; order: number; required: boolean; type?: 'manager' | 'user'; label?: string }> = [];
+        const seen = new Set<string>();
+        const addStep = (approverId: string | null | undefined, options: { orderHint?: number; required?: boolean; type?: 'manager' | 'user'; label?: string }) => {
+          if (!approverId) return;
+          if (seen.has(approverId)) return;
+          approverSteps.push({
+            approverId,
+            order: options.orderHint ?? approverSteps.length,
+            required: options.required ?? true,
+            type: options.type,
+            label: options.label,
+          });
+          seen.add(approverId);
+        };
+
+        const managerId = employee.managerId ?? null;
+        if (policy.isManagerApprover && managerId) {
+          addStep(managerId, { orderHint: -1, required: true, type: 'manager', label: employee.manager?.name ?? 'Manager' });
         }
-        
-        // Add explicit approvers, resolving virtual approvers
+
         for (const a of policy.approvers) {
-          if ((a as any).approverType === 'manager') {
-            // Virtual manager: resolve to employee's actual manager
-            if (employee.managerId && !approverIds.includes(employee.managerId)) {
-              approverIds.push(employee.managerId);
-            }
-          } else if ((a as any).approverId) {
-            // Real user approver
-            if (!approverIds.includes((a as any).approverId)) {
-              approverIds.push((a as any).approverId);
-            }
+          if (a.approverType === 'manager') {
+            addStep(managerId, {
+              orderHint: a.order ?? approverSteps.length,
+              required: a.required ?? true,
+              type: 'manager',
+              label: employee.manager?.name ?? 'Manager',
+            });
+          } else if (a.approverId) {
+            addStep(a.approverId, {
+              orderHint: a.order ?? approverSteps.length,
+              required: a.required ?? true,
+              type: 'user',
+              label: a.approver?.name ?? undefined,
+            });
           }
         }
 
+        approverSteps
+          .sort((a, b) => a.order - b.order)
+          .forEach((step, index) => {
+            step.order = index;
+          });
+
+        const requiredApprovers = approverSteps.filter(step => step.required !== false).map(step => step.approverId);
+        const sequential = policy.sequential || approverSteps.length > 1 || (!!managerId && policy.isManagerApprover);
+
         rulesToApply = {
-          type: policy.minApprovalPercentage && approverIds.length > 0 ? 'hybrid' : (policy.minApprovalPercentage ? 'percentage' : 'specific_approver'),
+          type: policy.minApprovalPercentage && approverSteps.length > 0 ? 'hybrid' : (policy.minApprovalPercentage ? 'percentage' : 'specific_approver'),
           percentageThreshold: policy.minApprovalPercentage ?? undefined,
-          requiredApprovers: approverIds.length ? approverIds : undefined,
-          managerFirst: policy.managerFirst || undefined,
-          sequential: policy.sequential || undefined,
+          requiredApprovers: requiredApprovers.length ? requiredApprovers : undefined,
+          approverSequence: approverSteps.length ? approverSteps : undefined,
+          managerFirst: policy.managerFirst || (policy.isManagerApprover ? true : undefined) || undefined,
+          sequential: sequential ? true : undefined,
         } as any;
       }
     }
@@ -109,6 +144,56 @@ export async function POST(req: Request) {
     },
     include: { employee: true, approvals: { include: { approver: true } } },
   });
+
+  // Notify approvers about the new expense awaiting review
+  if (employee.companyId) {
+    const initialApproverIds = new Set<string>();
+
+    if (rulesToApply?.sequential && rulesToApply.approverSequence?.length) {
+      const firstStep = rulesToApply.approverSequence[0];
+      if (firstStep?.approverId && firstStep.approverId !== employee.id) {
+        initialApproverIds.add(firstStep.approverId);
+      }
+    } else if (rulesToApply?.requiredApprovers?.length) {
+      for (const approverId of rulesToApply.requiredApprovers) {
+        if (approverId && approverId !== employee.id) {
+          initialApproverIds.add(approverId);
+        }
+      }
+    }
+
+    if (!initialApproverIds.size && employee.managerId && employee.managerId !== employee.id) {
+      initialApproverIds.add(employee.managerId);
+    }
+
+    if (!initialApproverIds.size) {
+      const companyApprovers = await prisma.user.findMany({
+        where: {
+          companyId: employee.companyId,
+          role: { in: ['admin', 'manager'] },
+          NOT: { id: employee.id },
+        },
+      });
+      for (const user of companyApprovers) {
+        initialApproverIds.add(user.id);
+      }
+    }
+
+    const notifyMessage = {
+      title: 'Expense awaiting review',
+      body: `${employee.name} submitted "${description}" for ${currency} ${amount}.`,
+      url: `/dashboard/approvals`,
+      data: { expenseId: created.id },
+    };
+
+    await Promise.all(
+      Array.from(initialApproverIds).map(async id => {
+        await sendPushNotification(id, notifyMessage).catch(error => {
+          console.error('Failed to send approval request notification', error);
+        });
+      })
+    );
+  }
 
   return NextResponse.json(mapExpense(created), { status: 201 });
 }

@@ -18,10 +18,11 @@ import { useAppContext } from '@/context/app-context';
 import type { Expense } from '@/lib/definitions';
 import Link from 'next/link';
 import { fetchExchangeRates } from '@/lib/currency';
+import { getTeamMembers } from '@/lib/company';
 
 const getAnalytics = (
   expenses: Expense[],
-  totalEmployees: number,
+  teamSize: number,
   userId: string | undefined,
   companyCurrency: string,
   ratesMap: Record<string, Record<string, number>>
@@ -70,7 +71,7 @@ const getAnalytics = (
     const myPendingExpenses = expenses.filter(e => e.employee.id === userId && e.status === 'pending').length;
     const myApprovedExpenses = expenses.filter(e => e.employee.id === userId && e.status === 'approved').length;
   
-    return { pending, approvedThisMonth, chartData, totalEmployees, myTotalExpenses, myPendingExpenses, myApprovedExpenses };
+    return { pending, approvedThisMonth, chartData, totalEmployees: teamSize, myTotalExpenses, myPendingExpenses, myApprovedExpenses };
   };
 
 export default function DashboardPage() {
@@ -93,7 +94,8 @@ export default function DashboardPage() {
     return () => { mounted = false; };
   }, [expenses]);
 
-  const { pending, approvedThisMonth, chartData, totalEmployees, myTotalExpenses, myPendingExpenses, myApprovedExpenses } = getAnalytics(expenses, users.length, currentUser?.id, companyCurrency, ratesMap);
+  const colleagues = getTeamMembers(users, currentUser?.id);
+  const { pending, approvedThisMonth, chartData, totalEmployees, myTotalExpenses, myPendingExpenses, myApprovedExpenses } = getAnalytics(expenses, colleagues.length, currentUser?.id, companyCurrency, ratesMap);
   const myExpenses = expenses.filter(e => e.employee.id === currentUser?.id);
 
   const handleExpenseSubmit = (
@@ -137,7 +139,7 @@ export default function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Total Employees
+              Team Members
             </CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>

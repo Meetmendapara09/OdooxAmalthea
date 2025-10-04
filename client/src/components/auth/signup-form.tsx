@@ -65,6 +65,11 @@ export function SignupForm() {
     const currency = countryToCurrency.get(countryName);
     if (!currency) return;
 
+    if (selectedRole !== 'admin') {
+      alert('Only admins can create a new company. Please contact your administrator to join an existing organization.');
+      return;
+    }
+
     try {
       // 1) Create company (ensures currency exists)
       const companyRes = await fetch('/api/companies', {
@@ -75,6 +80,7 @@ export function SignupForm() {
           currencyCode: currency.code,
           currencyName: currency.name,
           currencySymbol: currency.symbol,
+          isInitialAdmin: true,
         }),
       });
       if (!companyRes.ok) throw new Error(await companyRes.text());
@@ -127,11 +133,18 @@ export function SignupForm() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="admin">Admin - Full access to manage company</SelectItem>
-            <SelectItem value="manager">Manager - Approve expenses & view team</SelectItem>
-            <SelectItem value="employee">Employee - Submit & track expenses</SelectItem>
+            <SelectItem value="manager" disabled>
+              Manager - Invite only (ask your admin)
+            </SelectItem>
+            <SelectItem value="employee" disabled>
+              Employee - Invite only (ask your admin)
+            </SelectItem>
           </SelectContent>
         </Select>
       </div>
+      <p className="text-sm text-muted-foreground">
+        Only admins can create a new company. Team members should request an invitation from their admin.
+      </p>
       <div className="space-y-2">
         <Label htmlFor="country">Country (for default currency)</Label>
         <Select name="country" required onValueChange={(val) => setSelectedCountry(val)}>

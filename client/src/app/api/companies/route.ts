@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import type { Prisma } from '@prisma/client';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 
 export async function GET() {
   const companies = await prisma.company.findMany({ include: { currency: true } });
@@ -9,8 +11,19 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { name, currencyCode, currencyName, currencySymbol } = body || {};
+  const { name, currencyCode, currencyName, currencySymbol, isInitialAdmin } = body || {};
   if (!name || !currencyCode) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
+  const session = await getServerSession(authOptions);
+  const isAdminSession = !!session && (session.user as any)?.role === 'admin';
+  const initialAdmin = Boolean(isInitialAdmin);
+  if (!isAdminSession) {
+    if (!initialAdmin) {
+      return NextResponse.json({ error: 'Only admins can create a company' }, { status: 403 });
+    }
+    if (session?.user) {
+      return NextResponse.json({ error: 'Only admins can create a company' }, { status: 403 });
+    }
+  }
   try {
     // Ensure currency exists; if not, create it with provided details
   const company = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {

@@ -1,30 +1,40 @@
-# 💰 Expenseasy
+# Expenseasy
 
-Expenseasy is a modern expense management application built with Next.js 15, PostgreSQL (via Prisma ORM), and Tailwind CSS.
+Modern Next.js 15 application for expense management with **PostgreSQL via Prisma**, conditional approvals, role-based access control, and client-side OCR.
 
-It simplifies expense tracking, introduces role-based approvals, and includes client-side OCR for receipts—all in one streamlined platform.
+**⚠️ All data operations flow through Prisma ORM to PostgreSQL.** No mock data is used in production code.
 
 📚 **See [ARCHITECTURE.md](./ARCHITECTURE.md) for complete technical documentation.**
 
-## ✨ Features
+## Features
 
-- 📝 Expense creation & listing
-- 👥 Role-based access (Admin / Manager / Employee)
-- ✅ Conditional approvals (percentage, specific approver, hybrid)
-- 🧾 Receipt OCR (Tesseract.js) – auto-fills amount, date, vendor, expense type
-- 🔐 Authentication with NextAuth (JWT)
-- 💱 Real-time currency conversion
+- Next.js + Tailwind CSS UI
+- Expense creation, listing, and detail view
+- Role-based views (admin/manager/employee)
+- Conditional approvals:
+  - Percentage rule (e.g., 60% of approvers)
+  - Specific approver rule (e.g., CFO approves)
+  - Hybrid rule (percentage AND specific approvers)
+- Ordered, sequential approval routing with manager-first policies and push notifications per step
+- OCR receipt scanning (client-side) using Tesseract.js
+- Authentication with NextAuth (JWT strategy with Credentials provider)
+- Real-time currency conversions via ExchangeRate-API
+- Internal `/api/exchange` proxy honours the `EXCHANGE_API` key for ExchangeRate-API queries
+- Country/currency data from Rest Countries API
+- Admins can trigger a password reset email with an auto-generated temporary password for any team member
+- **Forgot Password Flow**: Users can request password reset via email with secure token-based link (expires in 1 hour)
+- All CRUD operations via Prisma ORM → PostgreSQL
 
-  
-## 🚀 Getting started
+## Getting started
 
 1. Install dependencies
+
 	npm install
 
 2. Start dev server
-	npm run dev
 
-## 🗄️ Database: PostgreSQL (Local setup)
+	npm run dev
+## Database: PostgreSQL (Local setup)
 
 We use PostgreSQL via Prisma.
 
@@ -45,18 +55,18 @@ We use PostgreSQL via Prisma.
 
 	npm run prisma:seed
 
-⚠️ Troubleshooting:
+Troubleshooting:
 - If ts-node isn’t installed, add it as a dev dependency or compile the seed to JS.
 - Alternatively, run: npx ts-node prisma/seed.ts
 
-## 🔑 RBAC
+## RBAC
 
 Roles supported: admin, manager, employee.
 - Sidebar items are role-filtered
 - Approvals page is protected with a RoleGuard allowing admin/manager
 - Approval actions also check the current role and prevent employee actions
 
-## 🔍 OCR languages
+## OCR languages
 
 OCR runs in the browser using Tesseract.js.
 - Default languages: English + Hindi (eng+hin)
@@ -67,7 +77,7 @@ OCR runs in the browser using Tesseract.js.
 
 	http://localhost:3000 (or the port shown in the terminal)
 
-## 🧾 OCR: Receipt Scanning (Tesseract.js)
+## OCR: Receipt Scanning (Tesseract.js)
 
 We use Tesseract.js directly in the browser to extract text from uploaded receipt images and then parse fields:
 
@@ -85,11 +95,11 @@ No server key or model setup is required for Tesseract.js. For better accuracy y
 - Crop the image to the receipt area before upload
 - Switch to additional languages by passing `{ lang: 'eng+spa' }` to `ocrReceiptClient`
 
-⚠️ Troubleshooting:
+Troubleshooting:
 - If OCR is slow, it’s running fully client-side in the browser. Consider resizing images before upload.
 - If fields are not detected correctly, you can still manually edit the prefilled form fields.
 
-## 🔐 Authentication and Signup
+## Authentication and Signup
 
 We use NextAuth with the Prisma Adapter and the Credentials provider.
 
@@ -97,26 +107,31 @@ We use NextAuth with the Prisma Adapter and the Credentials provider.
 	- NEXTAUTH_URL="http://localhost:3000"
 	- NEXTAUTH_SECRET="some-strong-random-string"
 
-👤 Signup flow:
+Signup flow:
 - Visit /signup
 - Enter company details and your admin user details
 - We’ll create the company (and currency if it doesn’t exist), create your admin user, then log you in automatically.
 
-👥 Seeded users (if you ran the seed script):
+Seeded users (if you ran the seed script):
 - admin@expenseasy.com / password
 - manager@expenseasy.com / password
 - employee@expenseasy.com / password
 
 Note: If you seeded earlier, you may need to re-seed to get passwords set.
 
-## ⚡ Prisma Accelerate
+**Forgot Password:**
+- Visit `/forgot-password` to request a password reset
+- Check your email for a reset link (valid for 1 hour)
+- If SMTP is not configured, the reset URL will be logged to the server console for development
+
+## Prisma Accelerate
 
 This project is configured to use Prisma Accelerate via the DATABASE_URL using the prisma+postgres protocol.
 
 - The `.env` contains a `DATABASE_URL` that begins with `prisma+postgres://...` which routes all Prisma Client queries through Accelerate.
 - Because Accelerate is handled by the connection string, no additional code changes are required. We instantiate a normal `PrismaClient()` in `src/lib/db.ts`, and all CRUD operations will go through Accelerate automatically.
 
-## 🌍 Deployment
+## Deployment
 
 This project is ready for deployment on Vercel at: **https://new-backdoor-pathway.vercel.app**
 
@@ -124,12 +139,12 @@ This project is ready for deployment on Vercel at: **https://new-backdoor-pathwa
 
 ### Quick Deploy to Vercel
 
-1. Push repo → GitHub
-2. Import project in Vercel
-3. Add env vars (DATABASE_URL, NEXTAUTH_URL, NEXTAUTH_SECRET, etc.)
-4. Deploy 🎉
+1. Push your code to GitHub
+2. Import project in Vercel dashboard
+3. Add environment variables (see DEPLOYMENT.md)
+4. Deploy
 
-### 🔧 Environment Variables for Production
+### Environment Variables for Production
 
 Set these in your Vercel project settings:
 - `DATABASE_URL` - Your Prisma Accelerate connection string
@@ -138,4 +153,19 @@ Set these in your Vercel project settings:
 - `CLIENT_ID` - Your application client ID
 - `CLIENT_SECRET` - Your application client secret
 - `NEXT_PUBLIC_WEB_URL` - Public-facing URL for the app
+- `EXCHANGE_API` *(optional but recommended)* - API key for https://www.exchangerate-api.com (used by `/api/exchange`)
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE`, `SMTP_FROM` *(optional)* - Configure these to deliver password reset emails
+- `WEB_PUSH_PUBLIC_KEY` / `WEB_PUSH_PRIVATE_KEY` - VAPID key pair for signing push notifications
+- `NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY` - Same value as `WEB_PUSH_PUBLIC_KEY` exposed to the client
+- `WEB_PUSH_CONTACT_EMAIL` *(optional)* - Email used in VAPID contact header (defaults to notifications@expenseasy.com)
+
+Generate VAPID keys locally with:
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+Set the resulting `publicKey` and `privateKey` into the variables above.
+
+> ℹ️ If SMTP variables are omitted, password reset emails are skipped but the generated password is logged to the server console so administrators can share it manually during development.
 

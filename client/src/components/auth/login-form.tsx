@@ -32,6 +32,11 @@ export function LoginForm() {
         <Label htmlFor="password">Password</Label>
   <Input id="password" name="password" type="password" required />
       </div>
+      <div className="flex justify-end">
+        <a href="/forgot-password" className="text-sm text-accent hover:underline">
+          Forgot password?
+        </a>
+      </div>
       <Button type="submit" className="w-full bg-accent hover:bg-accent/90">
         Log In
       </Button>

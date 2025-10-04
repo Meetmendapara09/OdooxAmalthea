@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAppContext } from '@/context/app-context';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
+import { getDashboardTitle } from '@/lib/roles';
 
 export function AppHeader() {
   const { currentUser } = useAppContext();
@@ -32,6 +33,7 @@ export function AppHeader() {
   const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('');
 
   const userRole = currentUser?.role ?? 'employee';
+  const dashboardTitle = getDashboardTitle(currentUser?.role);
 
   const navItems = [
     { href: '/dashboard', icon: Home, label: 'Dashboard', roles: ['admin', 'manager', 'employee'] },
@@ -79,6 +81,12 @@ export function AppHeader() {
           className="w-full rounded-lg bg-background pl-8 md:w-[200px] lg:w-[336px]"
         />
       </div>
+
+      {currentUser && (
+        <span className="hidden text-sm font-medium text-muted-foreground sm:inline-block">
+          {dashboardTitle}
+        </span>
+      )}
 
       {currentUser && (
         <DropdownMenu>

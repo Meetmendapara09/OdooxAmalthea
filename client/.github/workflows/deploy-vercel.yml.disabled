@@ -1,0 +1,64 @@
+name: Deploy to Vercel (Optional)
+
+# This workflow is optional - Vercel can deploy automatically via webhooks
+# Use this if you want more control over the deployment process
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Run type checking
+        run: npm run typecheck
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel
+
+      - name: Pull Vercel Environment Information
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        if: github.ref == 'refs/heads/main'
+
+      - name: Build Project Artifacts
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        if: github.ref == 'refs/heads/main'
+
+      - name: Deploy to Vercel (Production)
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+        if: github.ref == 'refs/heads/main'
+
+      - name: Deploy to Vercel (Preview)
+        run: vercel deploy --token=${{ secrets.VERCEL_TOKEN }}
+        if: github.ref != 'refs/heads/main'
+
+# To enable this workflow:
+# 1. Get your Vercel token: https://vercel.com/account/tokens
+# 2. Add secrets to GitHub:
+#    - Go to repository Settings → Secrets → Actions
+#    - Add: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID
+# 3. Uncomment this file and push
+
+# Note: Vercel's automatic deployment via webhooks is simpler and recommended
+# Use this only if you need custom CI/CD logic before deployment

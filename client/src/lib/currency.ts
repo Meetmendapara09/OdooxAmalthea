@@ -22,29 +22,32 @@ export async function fetchCountriesAndCurrencies(): Promise<CountryCurrency[]> 
     countriesCache = rows;
     return rows;
   } catch {
-    // Fallback to USD only
-    const fallback: CountryCurrency[] = [{ country: 'United States', code: 'USD', name: 'United States dollar', symbol: '$' }];
+    // Fallback to INR only
+    const fallback: CountryCurrency[] = [{ country: 'India', code: 'INR', name: 'Indian Rupee', symbol: '₹' }];
     countriesCache = fallback;
     return fallback;
   }
 }
 
 export async function fetchExchangeRates(base: string): Promise<Record<string, number>> {
+  const upperBase = base.toUpperCase();
   const now = Date.now();
-  if (ratesCache && ratesCache.base === base && now - ratesCache.timestamp < 15 * 60_000) {
+  if (ratesCache && ratesCache.base === upperBase && now - ratesCache.timestamp < 15 * 60_000) {
     return ratesCache.rates;
   }
   try {
-    const res = await fetch(`https://api.exchangerate-api.com/v4/latest/${encodeURIComponent(base)}`);
-    if (!res.ok) throw new Error('rate fetch failed');
+    const res = await fetch(`/api/exchange?base=${encodeURIComponent(upperBase)}`);
+    if (!res.ok) {
+      throw new Error(await res.text());
+    }
     const json = await res.json();
-    const rates = json.rates as Record<string, number>;
-    ratesCache = { base, timestamp: now, rates };
+    const rates = (json?.rates ?? {}) as Record<string, number>;
+    ratesCache = { base: upperBase, timestamp: now, rates };
     return rates;
-  } catch {
-    // Graceful fallback: identity rate for base
-    const rates = { [base]: 1 } as Record<string, number>;
-    ratesCache = { base, timestamp: now, rates };
+  } catch (error) {
+    console.error('Exchange rate fetch failed, using fallback rate map', error);
+    const rates = { [upperBase]: 1 } as Record<string, number>;
+    ratesCache = { base: upperBase, timestamp: now, rates };
     return rates;
   }
 }

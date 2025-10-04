@@ -18,7 +18,16 @@ NEXTAUTH_SECRET="CzfwsWfiv3dT2Ez2N2fcZ2wEds/ErkHjO9Wdv2DjHT8="
 CLIENT_ID="cmgbxet5n00yf17fhetpt2p04"
 CLIENT_SECRET="PMKJvVqrAsx_FcqFWe5Ms_TPYFpUS64k0KM2-cXS8rM"
 NEXT_PUBLIC_WEB_URL="https://new-backdoor-pathway.vercel.app"
+WEB_PUSH_PUBLIC_KEY="your_web_push_public_key"
+WEB_PUSH_PRIVATE_KEY="your_web_push_private_key"
+NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY="your_web_push_public_key"
+WEB_PUSH_CONTACT_EMAIL="notifications@example.com"
 ```
+
+Generate a VAPID key pair locally:
+
+```bash
+npx web-push generate-vapid-keys
 
 ## Deployment Steps
 

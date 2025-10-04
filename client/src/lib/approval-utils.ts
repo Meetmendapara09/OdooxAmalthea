@@ -1,72 +1,184 @@
-import type { Expense, Approval, ApprovalRule, User } from './definitions';
+import type { Expense, Approval, ApprovalRuleApproverStep, User } from './definitions';
 
-export function evaluateApprovalRules(expense: Expense, allUsers: User[]): 'approved' | 'rejected' | 'pending' {
-  if (!expense.approvalRules || !expense.approvals) {
-    return 'pending';
+export interface ApprovalSequenceEntry {
+  step: ApprovalRuleApproverStep;
+  user: User | null;
+  approval?: Approval;
+  completed: boolean;
+  pending: boolean;
+}
+
+function normaliseSequentialSteps(expense: Expense): ApprovalRuleApproverStep[] {
+  const sequence = expense.approvalRules?.approverSequence ?? [];
+  if (sequence.length) {
+    return [...sequence]
+      .map((step, index) => ({
+        approverId: step.approverId,
+        order: step.order ?? index,
+        required: step.required ?? true,
+        type: step.type,
+        label: step.label,
+      }))
+      .filter((step, index, arr) =>
+        arr.findIndex(candidate => candidate.approverId === step.approverId && candidate.order === step.order) === index
+      )
+      .sort((a, b) => a.order - b.order);
   }
 
-  const { approvalRules, approvals } = expense;
-  // If sequential is in effect, enforce order by requiring earlier approvers to have acted before later ones count.
-  if (approvalRules.sequential && approvalRules.requiredApprovers && approvalRules.requiredApprovers.length > 1) {
-    // Build a map of approvals by approverId
-    const approvedIds = new Set(approvals.filter(a => a.decision === 'approved').map(a => a.approverId));
-    for (let i = 0; i < approvalRules.requiredApprovers.length; i++) {
-      const approverId = approvalRules.requiredApprovers[i];
-      if (!approvedIds.has(approverId)) {
-        // If a later approver approved but earlier hasn't, treat as pending until order is satisfied
-        break;
-      }
+  const legacyApprovers = expense.approvalRules?.requiredApprovers ?? [];
+  if (legacyApprovers.length) {
+    return legacyApprovers.map((id, index) => ({ approverId: id, order: index, required: true }));
+  }
+
+  return [];
+}
+
+function approvalsByApprover(expense: Expense): Map<string, Approval> {
+  const map = new Map<string, Approval>();
+  for (const approval of expense.approvals ?? []) {
+    map.set(approval.approverId, approval);
+  }
+  return map;
+}
+
+function isStepRequired(step: ApprovalRuleApproverStep): boolean {
+  return step.required !== false;
+}
+
+export function getApprovalSequence(expense: Expense, allUsers: User[]): ApprovalSequenceEntry[] {
+  const steps = normaliseSequentialSteps(expense);
+  const approvalMap = approvalsByApprover(expense);
+
+  return steps.map(step => {
+    const approval = approvalMap.get(step.approverId);
+    const user = allUsers.find(u => u.id === step.approverId) ?? null;
+    return {
+      step,
+      user,
+      approval,
+      completed: Boolean(approval),
+      pending: !approval,
+    };
+  });
+}
+
+export function getNextSequentialApproverId(expense: Expense): string | null {
+  if (!expense.approvalRules?.sequential) {
+    return null;
+  }
+
+  const steps = normaliseSequentialSteps(expense);
+  if (!steps.length) {
+    return null;
+  }
+
+  const approvalMap = approvalsByApprover(expense);
+  for (const step of steps) {
+    const approval = approvalMap.get(step.approverId);
+    if (!approval) {
+      return step.approverId;
+    }
+    if (approval.decision === 'rejected') {
+      return null;
     }
   }
-  const totalApprovers = getEligibleApprovers(expense, allUsers).length;
-  const approvedCount = approvals.filter(a => a.decision === 'approved').length;
-  const rejectedCount = approvals.filter(a => a.decision === 'rejected').length;
 
-  // If anyone rejected, it's rejected (for now - could be configurable)
-  if (rejectedCount > 0) {
+  return null;
+}
+
+export function evaluateApprovalRules(expense: Expense, allUsers: User[]): 'approved' | 'rejected' | 'pending' {
+  const rules = expense.approvalRules;
+  if (!rules) {
+    const approvals = expense.approvals ?? [];
+    if (!approvals.length) {
+      return 'pending';
+    }
+    if (approvals.some(approval => approval.decision === 'rejected')) {
+      return 'rejected';
+    }
+    return approvals.some(approval => approval.decision === 'approved') ? 'approved' : 'pending';
+  }
+
+  const approvals = expense.approvals ?? [];
+  if (approvals.some(approval => approval.decision === 'rejected')) {
     return 'rejected';
   }
 
-  switch (approvalRules.type) {
-    case 'percentage':
-      if (approvalRules.percentageThreshold) {
-        const requiredApprovals = Math.ceil((approvalRules.percentageThreshold / 100) * totalApprovers);
-        return approvedCount >= requiredApprovals ? 'approved' : 'pending';
-      }
-      break;
-
-    case 'specific_approver':
-      if (approvalRules.requiredApprovers) {
-        const hasAllRequiredApprovals = approvalRules.requiredApprovers.every(approverId =>
-          approvals.some(a => a.approverId === approverId && a.decision === 'approved')
-        );
-        return hasAllRequiredApprovals ? 'approved' : 'pending';
-      }
-      break;
-
-    case 'hybrid':
-      if (approvalRules.percentageThreshold && approvalRules.requiredApprovers) {
-        // For hybrid, both conditions must be met
-        const percentageMet = approvedCount >= Math.ceil((approvalRules.percentageThreshold / 100) * totalApprovers);
-        const specificApproversMet = approvalRules.requiredApprovers.every(approverId =>
-          approvals.some(a => a.approverId === approverId && a.decision === 'approved')
-        );
-        return percentageMet && specificApproversMet ? 'approved' : 'pending';
-      }
-      break;
+  const approvalMap = approvalsByApprover(expense);
+  const steps = normaliseSequentialSteps(expense);
+  if (rules.sequential && steps.length) {
+    const requiredSteps = steps.filter(isStepRequired);
+    const allRequiredApproved = requiredSteps.every(step => approvalMap.get(step.approverId)?.decision === 'approved');
+    if (!allRequiredApproved) {
+      return 'pending';
+    }
   }
 
-  return 'pending';
+  const eligibleApprovers = getEligibleApprovers(expense, allUsers);
+  const approvedCount = approvals.filter(approval => approval.decision === 'approved').length;
+
+  const threshold = rules.percentageThreshold;
+  const percentageRequired = threshold ? Math.ceil((threshold / 100) * Math.max(eligibleApprovers.length, 1)) : null;
+  const percentageMet = percentageRequired !== null ? approvedCount >= percentageRequired : false;
+
+  const requiredApprovers = rules.requiredApprovers ?? [];
+  const specificMet = requiredApprovers.length
+    ? requiredApprovers.every(approverId => approvalMap.get(approverId)?.decision === 'approved')
+    : false;
+
+  switch (rules.type) {
+    case 'percentage':
+      return percentageMet ? 'approved' : 'pending';
+    case 'specific_approver':
+      return specificMet ? 'approved' : 'pending';
+    case 'hybrid':
+      return percentageMet || specificMet ? 'approved' : 'pending';
+    default:
+      return 'pending';
+  }
 }
 
 export function getEligibleApprovers(expense: Expense, allUsers: User[]): User[] {
-  // For now, all managers and admins can approve
-  // In a real app, this might be based on hierarchy, department, etc.
+  const steps = normaliseSequentialSteps(expense);
+  if (steps.length) {
+    const ids = new Set(steps.map(step => step.approverId));
+    const users = allUsers.filter(user => ids.has(user.id));
+    if (users.length) {
+      return users;
+    }
+  }
+
+  if (expense.approvalRules?.requiredApprovers?.length) {
+    const requiredIds = new Set(expense.approvalRules.requiredApprovers);
+    return allUsers.filter(user => requiredIds.has(user.id));
+  }
+
   return allUsers.filter(user => user.role === 'manager' || user.role === 'admin');
 }
 
 export function canUserApprove(expense: Expense, user: User, allUsers: User[]): boolean {
-  if (expense.status !== 'pending') return false;
+  if (expense.status !== 'pending') {
+    return false;
+  }
+
+  const steps = normaliseSequentialSteps(expense);
+  if (expense.approvalRules?.sequential && steps.length) {
+    const approvalMap = approvalsByApprover(expense);
+    for (const step of steps) {
+      const approval = approvalMap.get(step.approverId);
+      if (!approval) {
+        return step.approverId === user.id;
+      }
+      if (approval.decision === 'rejected') {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  if (expense.approvalRules?.requiredApprovers?.length) {
+    return expense.approvalRules.requiredApprovers.includes(user.id);
+  }
 
   const eligibleApprovers = getEligibleApprovers(expense, allUsers);
   return eligibleApprovers.some(approver => approver.id === user.id);
@@ -77,33 +189,46 @@ export function getApprovalProgress(expense: Expense, allUsers: User[]): { appro
     return { approved: 0, total: 0, required: 0 };
   }
 
+  const steps = normaliseSequentialSteps(expense);
+  if (expense.approvalRules.sequential && steps.length) {
+    const approvalMap = approvalsByApprover(expense);
+    const requiredSteps = steps.filter(isStepRequired);
+    const approvedRequired = requiredSteps.filter(step => approvalMap.get(step.approverId)?.decision === 'approved').length;
+    return {
+      approved: approvedRequired,
+      total: steps.length,
+      required: requiredSteps.length,
+    };
+  }
+
   const eligibleApprovers = getEligibleApprovers(expense, allUsers);
-  const approvedCount = expense.approvals?.filter(a => a.decision === 'approved').length || 0;
+  const approvedCount = expense.approvals?.filter(approval => approval.decision === 'approved').length ?? 0;
 
   let required = 0;
-
   switch (expense.approvalRules.type) {
     case 'percentage':
       if (expense.approvalRules.percentageThreshold) {
-        required = Math.ceil((expense.approvalRules.percentageThreshold / 100) * eligibleApprovers.length);
+        required = Math.ceil((expense.approvalRules.percentageThreshold / 100) * Math.max(eligibleApprovers.length, 1));
       }
       break;
     case 'specific_approver':
-      required = expense.approvalRules.requiredApprovers?.length || 0;
+      required = expense.approvalRules.requiredApprovers?.length ?? 0;
       break;
-    case 'hybrid':
-      // For hybrid, show the maximum of the two requirements
+    case 'hybrid': {
       const percentageRequired = expense.approvalRules.percentageThreshold
-        ? Math.ceil((expense.approvalRules.percentageThreshold / 100) * eligibleApprovers.length)
+        ? Math.ceil((expense.approvalRules.percentageThreshold / 100) * Math.max(eligibleApprovers.length, 1))
         : 0;
-      const specificRequired = expense.approvalRules.requiredApprovers?.length || 0;
+      const specificRequired = expense.approvalRules.requiredApprovers?.length ?? 0;
       required = Math.max(percentageRequired, specificRequired);
       break;
+    }
+    default:
+      required = 0;
   }
 
   return {
     approved: approvedCount,
     total: eligibleApprovers.length,
-    required
+    required,
   };
 }

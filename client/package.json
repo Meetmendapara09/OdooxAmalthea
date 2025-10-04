@@ -4,13 +4,18 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "NODE_ENV=production next build",
+    "build": "prisma generate && prisma migrate deploy && next build",
+    "vercel-build": "prisma generate && prisma migrate deploy && next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+  "test": "tsx --test",
+    "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
-    "prisma:seed": "tsx prisma/seed.ts"
+    "prisma:deploy": "prisma migrate deploy",
+    "prisma:seed": "tsx prisma/seed.ts",
+    "db:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.10.0",
@@ -47,7 +52,8 @@
     "embla-carousel-react": "^8.6.0",
     "firebase": "^11.9.1",
     "genkit": "^1.0.0",
-    "lucide-react": "^0.475.0",
+  "lucide-react": "^0.475.0",
+  "nodemailer": "^6.9.15",
     "next": "^15.5.4",
     "next-auth": "^4.24.7",
     "patch-package": "^8.0.0",
@@ -59,13 +65,16 @@
     "recharts": "^2.15.1",
     "tailwind-merge": "^3.0.1",
     "tailwindcss-animate": "^1.0.7",
-    "tesseract.js": "^6.0.1",
+  "tesseract.js": "^6.0.1",
+  "web-push": "^3.6.0",
     "zod": "^3.24.2"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+  "@types/web-push": "^3.4.6",
+    "@types/nodemailer": "^6.4.14",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "tsx": "^4.20.6",

@@ -21,7 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { PlusCircle, MoreHorizontal } from 'lucide-react';
+import { Loader2, MoreHorizontal, PlusCircle, Send } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,8 +36,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAppContext } from '@/context/app-context';
+import { useToast } from '@/hooks/use-toast';
+import { getTeamMembers } from '@/lib/company';
 
 function getInitials(name: string) {
   return name
@@ -47,24 +49,83 @@ function getInitials(name: string) {
 }
 
 function InviteUserDialog() {
-  const { addUser } = useAppContext();
+  const { inviteUser, users } = useAppContext();
+  const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [role, setRole] = useState<UserRole>('employee');
+  const [password, setPassword] = useState('');
+  const [managerSelection, setManagerSelection] = useState<string>('none');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleInvite = () => {
-    if (email && name) {
-      addUser({ name, email, role });
+  const managerOptions = useMemo(
+    () => users.filter(u => ['manager', 'admin'].includes(u.role)),
+    [users],
+  );
+
+  useEffect(() => {
+    if (role !== 'employee') {
+      setManagerSelection('none');
+    }
+  }, [role]);
+
+  const resetForm = () => {
+    setEmail('');
+    setName('');
+    setRole('employee');
+    setPassword('');
+    setManagerSelection('none');
+  };
+
+  const handleInvite = async () => {
+    if (!email.trim() || !name.trim() || !password.trim()) {
+      toast({
+        title: 'Missing information',
+        description: 'Name, email, and a temporary password are required.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const managerId = role === 'employee' && managerSelection !== 'none' ? managerSelection : null;
+
+    try {
+      setIsSubmitting(true);
+      const created = await inviteUser({
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        role,
+        password,
+        managerId,
+      });
+      toast({
+        title: 'Team member added',
+        description: `${created.name} joined as ${created.role}.`,
+      });
+      resetForm();
       setIsOpen(false);
-      setEmail('');
-      setName('');
-      setRole('employee');
+    } catch (error: any) {
+      toast({
+        title: 'Unable to invite member',
+        description: error?.message ?? 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={open => {
+        setIsOpen(open);
+        if (!open) {
+          resetForm();
+        }
+      }}
+    >
       <DialogTrigger asChild>
         <Button size="sm" className="h-8 gap-1 bg-accent hover:bg-accent/90">
           <PlusCircle className="h-3.5 w-3.5" />
@@ -97,7 +158,7 @@ function InviteUserDialog() {
             <Label htmlFor="role" className="text-right">
               Role
             </Label>
-            <Select onValueChange={(value: UserRole) => setRole(value)} defaultValue={role}>
+            <Select onValueChange={(value: UserRole) => setRole(value)} value={role}>
                 <SelectTrigger className="col-span-3">
                     <SelectValue placeholder="Select a role" />
                 </SelectTrigger>
@@ -108,9 +169,59 @@ function InviteUserDialog() {
                 </SelectContent>
             </Select>
           </div>
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="password" className="text-right">
+              Temp password
+            </Label>
+            <Input
+              id="password"
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="Minimum 8 characters"
+              className="col-span-3"
+            />
+          </div>
+          {role === 'employee' && (
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="manager" className="text-right">
+                Manager
+              </Label>
+              <Select
+                value={managerSelection}
+                onValueChange={value => setManagerSelection(value)}
+              >
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Select a manager" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No manager yet</SelectItem>
+                  {managerOptions.map(manager => (
+                    <SelectItem key={manager.id} value={manager.id}>
+                      {manager.name} ({manager.role})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
         <DialogFooter>
-          <Button onClick={handleInvite} type="submit" className='bg-accent hover:bg-accent/90'>Send Invitation</Button>
+          <Button
+            onClick={handleInvite}
+            type="submit"
+            className="bg-accent hover:bg-accent/90"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Sending...
+              </>
+            ) : (
+              'Send Invitation'
+            )}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -118,12 +229,47 @@ function InviteUserDialog() {
 }
 
 function EditUserRoleDialog({ user, onOpenChange, open }: { user: User; onOpenChange: (open: boolean) => void; open: boolean }) {
-  const { updateUserRole } = useAppContext();
+  const { updateUser, users } = useAppContext();
+  const { toast } = useToast();
   const [selectedRole, setSelectedRole] = useState<UserRole>(user.role);
+  const [managerSelection, setManagerSelection] = useState<string>(user.managerId ?? 'none');
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleSaveChanges = () => {
-    updateUserRole(user.id, selectedRole);
-    onOpenChange(false);
+  useEffect(() => {
+    setSelectedRole(user.role);
+    setManagerSelection(user.managerId ?? 'none');
+  }, [user]);
+
+  const managerOptions = useMemo(
+    () =>
+      users.filter(
+        candidate => ['manager', 'admin'].includes(candidate.role) && candidate.id !== user.id,
+      ),
+    [users, user.id],
+  );
+
+  const handleSaveChanges = async () => {
+    try {
+      setIsSaving(true);
+      const managerId = selectedRole === 'employee' && managerSelection !== 'none' ? managerSelection : null;
+      const updated = await updateUser(user.id, {
+        role: selectedRole,
+        managerId,
+      });
+      toast({
+        title: 'Team member updated',
+        description: `${updated.name} is now ${updated.role}.`,
+      });
+      onOpenChange(false);
+    } catch (error: any) {
+      toast({
+        title: 'Unable to update member',
+        description: error?.message ?? 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -146,7 +292,7 @@ function EditUserRoleDialog({ user, onOpenChange, open }: { user: User; onOpenCh
             <Label htmlFor="role" className="text-right">
               Role
             </Label>
-            <Select onValueChange={(value: UserRole) => setSelectedRole(value)} defaultValue={selectedRole}>
+            <Select onValueChange={(value: UserRole) => setSelectedRole(value)} value={selectedRole}>
               <SelectTrigger className="col-span-3">
                 <SelectValue placeholder="Select a role" />
               </SelectTrigger>
@@ -157,10 +303,48 @@ function EditUserRoleDialog({ user, onOpenChange, open }: { user: User; onOpenCh
               </SelectContent>
             </Select>
           </div>
+          {selectedRole === 'employee' && (
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="manager" className="text-right">
+                Manager
+              </Label>
+              <Select
+                value={managerSelection}
+                onValueChange={value => setManagerSelection(value)}
+              >
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Select a manager" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No manager</SelectItem>
+                  {managerOptions.map(manager => (
+                    <SelectItem key={manager.id} value={manager.id}>
+                      {manager.name} ({manager.role})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSaveChanges} className='bg-accent hover:bg-accent/90'>Save Changes</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSaveChanges}
+            className='bg-accent hover:bg-accent/90'
+            disabled={isSaving}
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              'Save Changes'
+            )}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -171,6 +355,10 @@ function EditUserRoleDialog({ user, onOpenChange, open }: { user: User; onOpenCh
 export default function TeamPage() {
   const { users, currentUser } = useAppContext();
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [sendingPasswordFor, setSendingPasswordFor] = useState<string | null>(null);
+  const { toast } = useToast();
+  const userMap = useMemo(() => new Map(users.map(u => [u.id, u])), [users]);
+  const teamMembers = useMemo(() => getTeamMembers(users, currentUser?.id), [users, currentUser?.id]);
 
   const canManage = (targetUser: User): boolean => {
     if (!currentUser) return false;
@@ -190,6 +378,33 @@ export default function TeamPage() {
 
   const handleEditClick = (user: User) => {
     setEditingUser(user);
+  };
+
+  const handleSendPassword = async (user: User) => {
+    setSendingPasswordFor(user.id);
+    try {
+      const res = await fetch(`/api/users/${user.id}/send-password`, { method: 'POST' });
+      if (!res.ok && res.status !== 202) {
+        const errorText = await res.text();
+        throw new Error(errorText || 'Failed to send password');
+      }
+      const body = res.status === 202 ? await res.json().catch(() => ({})) : await res.json().catch(() => ({}));
+      toast({
+        title: 'Temporary password generated',
+        description: body?.warning
+          ? 'Password reset locally. Configure SMTP to deliver emails.'
+          : `A new password was emailed to ${user.email}.`,
+      });
+    } catch (error: any) {
+      console.error('Failed to send password', error);
+      toast({
+        title: 'Unable to send password',
+        description: error?.message ?? 'Please try again later.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSendingPasswordFor(null);
+    }
   };
 
   return (
@@ -219,13 +434,14 @@ export default function TeamPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead className="hidden md:table-cell">Email</TableHead>
+                <TableHead className="hidden lg:table-cell">Manager</TableHead>
                 <TableHead>
                   <span className="sr-only">Actions</span>
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {users.map((user: User) => (
+              {teamMembers.map((user: User) => (
                 <TableRow key={user.id}>
                   <TableCell className="hidden sm:table-cell">
                     <Avatar className="h-9 w-9">
@@ -239,8 +455,9 @@ export default function TeamPage() {
                       {user.role}
                     </Badge>
                   </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    {user.email}
+                  <TableCell className="hidden md:table-cell">{user.email}</TableCell>
+                  <TableCell className="hidden lg:table-cell">
+                    {user.managerId ? userMap.get(user.managerId)?.name ?? '—' : '—'}
                   </TableCell>
                   <TableCell>
                     {canManage(user) ? (
@@ -259,6 +476,17 @@ export default function TeamPage() {
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
                           <DropdownMenuItem onClick={() => handleEditClick(user)}>
                             Edit Role
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleSendPassword(user)}
+                            disabled={sendingPasswordFor === user.id}
+                          >
+                            {sendingPasswordFor === user.id ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <Send className="mr-2 h-4 w-4" />
+                            )}
+                            Send password
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive">Remove User</DropdownMenuItem>
@@ -280,6 +508,13 @@ export default function TeamPage() {
                   </TableCell>
                 </TableRow>
               ))}
+              {teamMembers.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
+                    No team members yet. Invite your first colleague to get started.
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>

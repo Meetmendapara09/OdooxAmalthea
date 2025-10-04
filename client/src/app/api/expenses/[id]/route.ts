@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { evaluateApprovalRules } from '@/lib/approval-utils';
+import { evaluateApprovalRules, getNextSequentialApproverId } from '@/lib/approval-utils';
+import { sendPushNotification } from '@/lib/push-server';
 
 function mapExpense(e: any) {
   return {
@@ -60,6 +61,22 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const existing = await prisma.approval.findFirst({ where: { expenseId: e.id, approverId } });
   if (existing) return NextResponse.json({ error: 'Already voted' }, { status: 409 });
 
+  const mappedBefore = mapExpense(e);
+
+  if (mappedBefore.approvalRules?.sequential && mappedBefore.approvalRules.approverSequence?.length) {
+    const expectedApproverId = getNextSequentialApproverId(mappedBefore as any);
+    const inSequence = mappedBefore.approvalRules.approverSequence.some((step: any) => step.approverId === approverId);
+    if (!inSequence) {
+      return NextResponse.json({ error: 'Approver not part of this approval sequence' }, { status: 403 });
+    }
+    if (!expectedApproverId) {
+      return NextResponse.json({ error: 'No further approvals required at this stage' }, { status: 409 });
+    }
+    if (expectedApproverId !== approverId) {
+      return NextResponse.json({ error: 'Another approver is scheduled to act before you' }, { status: 409 });
+    }
+  }
+
   await prisma.approval.create({
     data: { expenseId: e.id, approverId, decision, comments: comments ?? null },
   });
@@ -74,10 +91,30 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   // Evaluate conditional approval rules and persist status
   const mapped = mapExpense(updated);
   const allUsers = await prisma.user.findMany();
+  const nextApproverId = getNextSequentialApproverId(mapped as any);
   const newStatus = evaluateApprovalRules(mapped as any, allUsers as any);
   if (newStatus !== mapped.status) {
     const persisted = await prisma.expense.update({ where: { id: e.id }, data: { status: newStatus } , include: { employee: true, approvals: { include: { approver: true } } }});
+    await sendPushNotification(persisted.employee.id, {
+      title: 'Expense status updated',
+      body: `"${persisted.description}" is now ${newStatus}.`,
+      url: `/dashboard/my-expenses/${persisted.id}`,
+      data: { expenseId: persisted.id, status: newStatus },
+    }).catch(error => {
+      console.error('Failed to send status update notification', error);
+    });
     return NextResponse.json(mapExpense(persisted));
+  }
+
+  if (nextApproverId && nextApproverId !== approverId && decision === 'approved') {
+    await sendPushNotification(nextApproverId, {
+      title: 'Expense awaiting approval',
+      body: `"${mapped.description}" is ready for your review.`,
+      url: `/dashboard/expenses/${mapped.id}`,
+      data: { expenseId: mapped.id },
+    }).catch(error => {
+      console.error('Failed to notify next approver', error);
+    });
   }
 
   return NextResponse.json(mapped);
@@ -103,6 +140,14 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }
   const newStatus = evaluateApprovalRules(mapped as any, allUsers as any);
   if (newStatus !== mapped.status) {
     const persisted = await prisma.expense.update({ where: { id }, data: { status: newStatus }, include: { employee: true, approvals: { include: { approver: true } } } });
+    await sendPushNotification(persisted.employee.id, {
+      title: 'Expense status updated',
+      body: `"${persisted.description}" is now ${newStatus}.`,
+      url: `/dashboard/my-expenses/${persisted.id}`,
+      data: { expenseId: persisted.id, status: newStatus },
+    }).catch(error => {
+      console.error('Failed to send status update notification', error);
+    });
     return NextResponse.json(mapExpense(persisted));
   }
   return NextResponse.json(mapped);

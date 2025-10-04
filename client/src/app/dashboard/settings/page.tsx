@@ -6,11 +6,54 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useAppContext } from "@/context/app-context";
-import { Separator } from "@/components/ui/separator";
 import { hasPermission } from "@/lib/rbac";
+import { useEffect, useState } from "react";
+import { hasActiveSubscription, registerPushSubscription, unregisterPushSubscription } from "@/lib/push-client";
+import { useToast } from "@/hooks/use-toast";
 
 export default function SettingsPage() {
   const { currentUser } = useAppContext();
+  const { toast } = useToast();
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [checkingPush, setCheckingPush] = useState(true);
+  const [updatingPush, setUpdatingPush] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    hasActiveSubscription()
+      .then(enabled => {
+        if (mounted) setPushEnabled(enabled);
+      })
+      .catch(error => {
+        console.error('Failed to check push subscription', error);
+      })
+      .finally(() => {
+        if (mounted) setCheckingPush(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handlePushToggle = async (nextValue: boolean) => {
+    setUpdatingPush(true);
+    try {
+      if (nextValue) {
+        await registerPushSubscription();
+        setPushEnabled(true);
+        toast({ title: 'Push notifications enabled', description: 'You will receive updates for expenses and approvals.' });
+      } else {
+        await unregisterPushSubscription();
+        setPushEnabled(false);
+        toast({ title: 'Push notifications disabled', description: 'You will no longer receive browser notifications.' });
+      }
+    } catch (error: any) {
+      console.error('Failed to update push subscription', error);
+      toast({ title: 'Push notification error', description: error?.message ?? 'Please try again.', variant: 'destructive' });
+    } finally {
+      setUpdatingPush(false);
+    }
+  };
 
   if (!currentUser) {
     return (
@@ -96,27 +139,26 @@ export default function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Notifications</CardTitle>
-          <CardDescription>Manage how you receive notifications from ExpensEasy.</CardDescription>
+          <CardDescription>Browser alerts keep you informed about expenses and approvals.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <Label htmlFor="email-notifications">Email Notifications</Label>
-                    <p className="text-sm text-muted-foreground">Receive emails about expense status updates and approvals.</p>
-                </div>
-                <Switch id="email-notifications" defaultChecked />
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between">
-                <div>
                     <Label htmlFor="push-notifications">Push Notifications</Label>
-                    <p className="text-sm text-muted-foreground">Get push notifications on your mobile device.</p>
+                    <p className="text-sm text-muted-foreground">Enable browser notifications for expense submissions and approvals.</p>
                 </div>
-                <Switch id="push-notifications" />
+                <Switch
+                  id="push-notifications"
+                  disabled={checkingPush || updatingPush}
+                  checked={pushEnabled}
+                  onCheckedChange={handlePushToggle}
+                />
             </div>
         </CardContent>
          <CardFooter className="border-t px-6 py-4">
-          <Button className="bg-accent hover:bg-accent/90">Save Preferences</Button>
+          <div className="text-sm text-muted-foreground">
+            {checkingPush ? 'Checking notification status…' : pushEnabled ? 'Push notifications are active on this device.' : 'Push notifications are currently disabled.'}
+          </div>
         </CardFooter>
       </Card>
 

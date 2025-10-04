@@ -24,10 +24,19 @@ export type ExpenseStatus = 'pending' | 'approved' | 'rejected';
 
 export type ApprovalRuleType = 'percentage' | 'specific_approver' | 'hybrid';
 
+export interface ApprovalRuleApproverStep {
+  approverId: string;
+  order: number;
+  required: boolean;
+  type?: 'manager' | 'user';
+  label?: string;
+}
+
 export interface ApprovalRule {
   type: ApprovalRuleType;
   percentageThreshold?: number; // For percentage and hybrid rules
   requiredApprovers?: string[]; // User IDs for specific_approver and hybrid rules
+  approverSequence?: ApprovalRuleApproverStep[]; // Ordered approvers for sequential flows
   // Derived from policy/editor
   managerFirst?: boolean;
   sequential?: boolean;
@@ -66,6 +75,7 @@ export interface ApprovalPolicyApproverDTO {
   approverId: string;
   required: boolean;
   order: number;
+  label?: string;
 }
 
 export interface ApprovalPolicyDTO {
