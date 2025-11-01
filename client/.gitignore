@@ -9,12 +9,12 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
+*/node_modules
 
 # testing
 /coverage
-
+**/node_modules
 # next.js
-docs
 /.next/
 /out/
 
@@ -44,4 +44,3 @@ next-env.d.ts
 # firebase
 firebase-debug.log
 firestore-debug.log
-.env*.local
